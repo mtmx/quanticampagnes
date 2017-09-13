@@ -1,0 +1,477 @@
+---
+title: "Pluie"
+author: "Mathieu"
+date: "13/09/2017"
+output: html_document
+---
+
+```{r setup, echo=F, message=F, warning=F, include = F, results = 'hide'}
+options(width = 999)
+knitr::opts_chunk$set(echo = TRUE)
+
+
+#chargement librairies
+#options(java.parameters = "-Xmx1024m")
+#library(XLConnectJars)
+#library(XLConnect)
+# https://cran.r-project.org/web/packages/xlsx/xlsx.pdf
+
+library(tidyverse)
+library(magrittr)
+library(COGugaison)
+library(data.table)
+library(sf)
+library(janitor)
+library(stringi)
+library(ggplot2)
+library(forcats)
+library(png)
+library(grid)
+library(RCurl)
+library(cartography)
+library(ggimage)
+library(ggiraph)
+library(viridis)
+
+#CV_pts <- st_read( "./data/CV_pts.shp", stringsAsFactors = F, quiet = T) %>% st_transform(crs = 2154)
+DEP.s <- st_read( "./data/DEP.s.shp", stringsAsFactors = F,quiet = T) %>% st_transform(crs = 2154)
+comm_prefs_80khabs <- st_read( dsn = "./data/comm_prefs_80khabs.shp",stringsAsFactors = F,quiet = T) %>% st_transform(crs = 2154)
+
+
+#import data
+krigeage_NORRR_TOT_1000m_df <- fread( file = "./data/krigeage_NORRR_TOT_1000m_df.csv", verbose = F)
+krigeage_NORRR1MM_TOT_m_1000m_df <- fread( file = "./data/krigeage_NORRR1MM_TOT_m_1000m_df.csv", verbose = F)
+#import data
+krigeage_1000m_df_mois <- fread( file = "./data/krigeage_1000m_df_mois.csv", verbose = F)
+
+Precip_REF_mois <- fread( file = "./data/Precip_REF_mois.csv", verbose = F)
+
+
+# parametrage du thème ggplot
+thm <- 
+  theme(legend.position="right",
+        legend.text=element_text(size=8),
+        legend.title=element_text(size=9),
+        axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.y=element_blank(),#element_text(size=9, color = "black"),
+        axis.title.y=element_blank(), #element_text(size=9, color = "grey",face="italic"),
+        axis.ticks=element_blank(),
+        panel.background=element_blank(),panel.border=element_blank(),
+        panel.grid.major.y=element_line(colour = 'grey80', linetype = 'dotdash', size = 0.1),
+        panel.grid.major.x=element_line(colour = 'grey80', linetype = 'dotdash', size = 0.1),#element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank(),
+        legend.key = element_rect(fill = NA, colour = NA),
+        legend.key.width = unit(0.4, "cm"),
+        strip.text.y = element_text(size = 8, colour = "black", angle = 0),
+        strip.text.x = element_text(size = 8, colour = "black", angle = 0),
+        plot.title=element_text(size=12,face="bold"),
+        plot.subtitle=element_text(size=9,face="italic"),
+        plot.caption=element_text(size=6,colour = "grey20")) 
+
+```
+
+Après avoir vérifié où se trouvaient [nos vaches, nos chèvres et nos cochons](https://mtmx.github.io/post/carto_cheptels/), voici une analyse du pays selon un facteur météorologique crucial qui détermine les cultures agricoles, les toits des maisons voire le moral des habitants : la pluie bien sûr. Poussé par la salutaire dynamique d’ouverture des données, Meteo France a publié quelques jeux de données issus de ses travaux (utilisées notamment pour visualiser le [réchauffement climatique](http://www.lemonde.fr/les-decodeurs/visuel/2014/12/09/comment-le-climat-de-la-france-s-est-rechauffe-depuis-1900_4537295_4355770.html). Ici on s’intéresse particulièrement au modèle Aladin qui leur a permis de [diffuser](http://www.data.gouv.fr/fr/datasets/indices-mensuels-de-precipitations-et-nombre-de-jours-de-precipitations-issus-du-modele-aladin-climat/), sur 8 000 points du territoire, le nombre de jours de pluie (au moins 1 mm tombé dans la journée) et la quantité de pluie par mois, en moyenne sur une période de 1976 à 2005.
+
+Pour passer d’une série de points à une information continue sur l’ensemble du territoire de France métropolitaine, on utilise la technique de krigeage pour interpoler l’information : comme d’habitude, toute la méthode et le traitement de données est disponible sur la page du projet [quanticampagnes](https://github.com/mtmx/quanticampagnes).
+
+
+### Où pleut-il le plus / Où pleut-il le plus souvent ?
+
+A gauche, la carte de la fréquence (à gauche) et la quantité de pluie (à droite).
+
+```{r carte_pluie_an_1,echo=F, message=F, warning=F, fig.width=4.7,fig.height=5,out.extra='style="float:left"'}
+
+
+# carte nb jours pluie
+ggplot() +
+  geom_tile(data = krigeage_NORRR1MM_TOT_m_1000m_df, aes(x=x, y=y, fill=var1.pred *12), color = NA) +
+  scale_fill_viridis(option="viridis", direction = -1, name = "") +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Nombre de jours de pluie par an",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm +   theme(legend.position = c(0.9, 0.5)) +
+  coord_sf(crs = st_crs(2154))
+
+
+``` 
+
+
+
+```{r carte_pluie_an_2,echo=F, message=F, warning=F, fig.width=4.7,fig.height=5, out.extra='style="float:left"'}
+
+# carte quantité pluie
+ggplot() +
+  geom_tile(data = krigeage_NORRR_TOT_1000m_df, aes(x=x, y=y, fill=var1.pred), color = NA) +
+  scale_fill_viridis(option="magma", direction = -1, name = "(en mm)", limits = c(500, 2500)) +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Quantité de pluie par an",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm +   theme(legend.position = c(0.9, 0.5)) +
+  coord_sf(crs = st_crs(2154))
+
+``` 
+
+
+A peine plus de 50 jours de pluie dans l'année sur le littoral du Golfe du Lyon et des Bouches-du-Rhône, légèrement plus sur la Côte d'Azur et en Corse. Un peu plus dans les environs de Toulouse, les Pays de la Loire et le bassin Parisien, ou encore les secteurs non montagneux d'Auvergne, Rhône-Alpes et d'Alsace.
+Les champions du ciré et des bottes sont à chercher en Basse Bretagne (semblerait que la "vraie"" Bretagne soit celle qui mouille), dans les Vosges, le Jura, le Morvan et les Pyrénées.
+La carte de la quantité de pluie est elle beaucoup plus corrélée au relief : Vosges, Jura, les contreforts méridionaux du Massif Central, Alpes et Pyrénées. Rien qu'avec cette carte on devine les vallées et les massifs alpins. Le différentiel de volume de précipitations entre plaines et montagnes est particulièrement remarquable dans le Languedoc, en Alsace ou encore dans le Puy-de-Dôme.
+
+
+La nuance entre fréquence et quantité est importante : on peut essayer de distinguer les zones où il pleut souvent à celles où il pleut beaucoup grâce à un analyse bivariée. 
+
+
+```{r graphique_pluie_an_bivarie,  fig.width=6,fig.height=5,echo=F, message=F, warning=F}
+
+# import data
+krigeage_TOT_m_1000m_df <- fread( file = "./data/krigeage_TOT_m_1000m_df.csv", verbose = F)
+COMM_indics_an_TOT_m <- fread( file = "./data/COMM_indics_an_TOT_m.csv", verbose = F)
+
+# calcul des quantiles 
+COMM_indics_an_TOT_m <- COMM_indics_an_TOT_m %>%
+  mutate(val_NORRR_TOT_m = val_NORRR_TOT /12) %>%
+  mutate(val_NORRR1MM_TOT_m.q = ntile(val_NORRR1MM_TOT_m,20),
+         val_NORRR_TOT_m.q = ntile(val_NORRR_TOT_m,20)) %>%
+   mutate(ttip = paste(
+    "<strong>", NOM_COM,"</strong>", " (moyenne par mois) <br />",
+   format(round(as.numeric(val_NORRR1MM_TOT_m), 0), nsmall=0, big.mark=" "), " jours de pluie<br />",
+   format(round(as.numeric(val_NORRR_TOT_m), 0), nsmall=0, big.mark=" "), " mm de pluie<br />"))
+
+#op <- par(mfrow=c(1,2))
+
+
+# carte nb jours pluie
+# graphique
+library(ggiraph)
+
+
+gg <-
+ggplot()+
+  geom_point(data=COMM_indics_an_TOT_m,aes(x=val_NORRR1MM_TOT_m,y=val_NORRR_TOT_m,
+                                           color=atan(val_NORRR1MM_TOT_m.q/val_NORRR_TOT_m.q),
+                                           alpha=val_NORRR_TOT_m.q+val_NORRR1MM_TOT_m.q), size = 0.2)+
+
+  geom_point_interactive(data = COMM_indics_an_TOT_m %>% right_join(comm_prefs_80khabs %>% dplyr::select(CODGEO) %>% as.data.frame(), by = c("INSEE_COM" = "CODGEO")),
+                         aes(x= val_NORRR1MM_TOT_m, y = val_NORRR_TOT_m,tooltip = ttip, data_id = INSEE_COM),shape = 21,colour = "black",fill = "red", alpha =0.8, size =1,stroke = 1) + 
+  scale_color_viridis(option = 'viridis') +
+   labs(x = "Nombre de jours de pluie (moyenne mensuelle)", y = "Quantité de pluie en mm (moyenne mensuelle)",
+       title = "Quantité et fréquence de pluie par an",
+       subtitle = "Moyenne sur période de référence : 1976-2005",
+       caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr") +
+  annotate("text", x = 6, y = 45, colour = "grey",size = 2, fontface="italic", label = "Il pleut peu\net rarement") +
+  annotate("text", x = 11, y = 45, colour = "grey",size = 2, fontface="italic", label = "Il pleut peu\nmais souvent") +
+  annotate("text", x = 7, y = 110, colour = "grey",size = 2, fontface="italic", label = "Il pleut beaucoup\nmais rarement") +  
+  annotate("text", x = 14, y = 150, colour = "grey",size = 2, fontface="italic", label = "Il pleut beaucoup\net souvent") +  
+  annotate("text", x = 7.5, y = 180, colour = "black",size = 3, fontface="bold", label = "Passez sur les points pour afficher les villes") +  
+  thm + theme(legend.position = "none", 
+              axis.text.x=element_text(size=9, color = "grey"),
+              axis.title.x=element_text(size=9, color = "black"),
+              axis.text.y=element_text(size=9, color = "grey"),
+              axis.title.y=element_text(size=9, color = "black",angle=90)) 
+
+
+# style du popup
+tooltip_css <- "background-color:gray;color:white;padding:10px;border-radius:5px 10px 5px 10px;"
+
+ggiraph(code = {print(gg)},
+        #width_svg = 20, 
+        tooltip_extra_css = tooltip_css,
+        tooltip_offx = 0, tooltip_offy = 0,
+        zoom_max = 1,
+        width = 0.7,
+        hover_css = "{fill:orange;r:6px;}")
+```
+
+```{r carte_pluie_an_bivariee,  fig.width=5,fig.height=5,echo=F, message=F, warning=F, out.extra='style="float:left"'}
+
+ggplot() +
+  geom_tile(data = krigeage_TOT_m_1000m_df, aes(x=x, y=y, fill=atan(var1.pred.NORRR1MM_TOT_m.q/var1.pred.NORRR_TOT.q),alpha=var1.pred.NORRR_TOT.q+var1.pred.NORRR1MM_TOT_m.q), color = NA) +
+  scale_fill_viridis(option = 'viridis') +
+  #scale_fill_distiller(palette = "Spectral")  +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Quantité et fréquence de pluie par an",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm + theme(legend.position = "none") +
+  coord_sf(crs = st_crs(2154))
+
+```
+
+Sur le graphique et la carte associée, le niveau de transparence et de nuance de couleur est fonction de la quantité de pluie (en abscisse) et du nombre de jours de pluie (en ordonnée).
+
+Première info : les communes du Sud-Est sont localisées à gauche du nuage de point, loin des autres, signe d'un climat franchement différent du reste du pays. Plus le tond est clair plus la quantité de précipitations est faible (Perpignan et Marseille), mais en violet foncé existent des communes où il pleut rarement mais quand il pleut, il pleut !
+A doite du nuage de points on retrouve sans surprise Brest, la ville où on compte le plus de jours de pluie dans l'année, mais Chambéry, Aurillac et Annecy sont de loin celles où il pleut le plus. Les villes où il pleut relativement souvent mais en quantité limitée sont signifées en jaune clair, on y trouve Chartes, Arras ou encore Strasbourg.
+
+
+
+
+
+
+
+
+
+
+### Quand pleut-il le plus ? et le plus souvent ?
+
+Si on prend en compte l'intégralité de la France métropolitaine, c'est en août qui pleut le moins souvent (moins de 6 jours en moyenne) et en mai qui pleut le plus souvent : 13 jours, quasiment 1 sur 2. Alors il est où le joli mois de mai ? 
+Par contre c'est à l'automne qui pleut le plus : 90 cm en moyenne en octobre et en novembre.
+
+
+```{r graphique_joyplot_1,  fig.width=4.7,fig.height=3.5,out.extra='style="float:left"',echo=F, message=F, warning=F}
+
+
+library(ggjoy)
+
+# table de détail jours pluie par point
+Precip_REF_distrib <-
+  Precip_REF_mois %>%
+  mutate(Mois_n = as.numeric(Mois)) %>%
+  mutate( Mois_txt_fr = recode_factor(Mois, '1' = 'Janvier', '2' = "Février",'3' = "Mars",
+                                      '4' = "Avril", '5' = "Mai", '6' = "Juin",
+                                      '7' = "Juillet", '8' = 'Août', '9' = 'Septembre',
+                                      '10' = 'Octobre', '11' = 'Novembre', '12' = 'Décembre')) %>%
+  dplyr::select(Point, Mois_txt_fr,NORRR1MM,NORRR) 
+
+# moyenne france par mois
+Precip_REF_distrib_frmet <-
+  Precip_REF_distrib %>%
+  group_by(Mois_txt_fr) %>%
+  summarise(NORRR1MM_frmet = mean(NORRR1MM),
+            NORRR_frmet = mean(NORRR)) %>%
+    mutate(Mois_txt_fr = factor(Mois_txt_fr, levels = c('Janvier',"Février", "Mars","Avril",  "Mai",  "Juin","Juillet",  'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre')) )
+
+
+# graphique distribution jours de pluie
+ggplot(Precip_REF_distrib,
+       aes(x = NORRR1MM, y = Mois_txt_fr, fill = Mois_txt_fr)) + 
+  geom_joy(scale = 1.5, rel_min_height = 0.01, col = "grey70") +
+  scale_x_continuous(limits = c(0,20)) +
+  geom_point(data=Precip_REF_distrib_frmet, 
+           aes(x = NORRR1MM_frmet, y = Mois_txt_fr), shape = '|', size = 3, color = "black") +
+  scale_fill_manual(values = c( "#0A2164","#1369A2", "#0099A9","#009780","#67B784","#CBDF7C",
+                                        "#FFE200","#DB9815", "#E57B25","#F0522D","#912E0F","#33004B"),
+                           name ="Moyenne") +
+  scale_y_discrete(limits = rev(levels(Precip_REF_distrib$Mois_txt_fr))) +
+  thm + theme(legend.position = "none",axis.text.y=element_text(size=9, color = "black"),axis.text.x=element_text(size=9, color = "grey40",face="italic")) +
+  labs(
+  title = "Nombre de jours de pluie par mois",
+  subtitle = "distribution sur l'ensemble du territoire de France métropolitaine",
+  caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+)
+
+
+
+``` 
+
+```{r graphique_joyplot_2,  fig.width=4.7,fig.height=3.5,out.extra='style="float:left"',echo=F, message=F, warning=F}
+
+# graphique distribution quantité de pluie
+ ggplot(Precip_REF_distrib,
+       aes(x = NORRR, y = Mois_txt_fr, fill = Mois_txt_fr)) + 
+  geom_joy(scale = 1.5, rel_min_height = 0.01, col = "grey70") +
+  scale_x_continuous(limits = c(0,200)) +
+  geom_point(data=Precip_REF_distrib_frmet, 
+           aes(x = NORRR_frmet, y = Mois_txt_fr), shape = '|', size = 3, color = "black") +
+  scale_fill_manual(values = c( "#0A2164","#1369A2", "#0099A9","#009780","#67B784","#CBDF7C",
+                                        "#FFE200","#DB9815", "#E57B25","#F0522D","#912E0F","#33004B"),
+                           name ="Moyenne") +
+  scale_y_discrete(limits = rev(levels(Precip_REF_distrib$Mois_txt_fr))) +
+  thm + theme(axis.text.x=element_text(size=9, color = "grey40",face="italic")) +
+  labs(
+  title = "Quantité de pluie par mois",
+  subtitle = "distribution sur l'ensemble du territoire de France métropolitaine",
+  caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+)
+
+``` 
+
+
+
+Dans 2/3 du pays, du Sud-Ouest au Nord-Est ainsi que dans une grande partie du Sud, c'est en mai et en juin qu'il pleut le plus souvent (carte de gauche ci-dessous). Sur la côte Atlantique, dans le Grand Ouest, en Corse et dans l'Hérault, c'est en hiver que le nombre de jours de pluie est maximal ; sur la côte normande et nordiste, c'est en octobre. L'impression est légèrement différente sur la carte de droite avec davantage de régions méridionales où la quantité de pluie est maximale en automne.
+
+```{r carte_pluie_max_1, fig.width=4.7,fig.height=5,out.extra='style="float:left"',echo=F, message=F, warning=F}
+
+krigeage_moismax_df <-
+  krigeage_1000m_df_mois %>%
+ # filter(indic %in% 'NORRR') %>%
+  mutate(N = paste0(x,"_",y)) %>%
+  # dplyr::select(-x,-y, -var1.var) %>%
+  group_by(N, indic) %>%
+  filter(var1.pred == max(var1.pred))  %>%
+  rename(MOIS_n_max = MOIS_n,MOIS_t_max = MOIS_t,var1.pred_max = var1.pred) %>%
+  mutate(MOIS_t_max = factor(MOIS_t_max, levels = c('Janvier',"Février", "Mars","Avril",  "Mai",  "Juin","Juillet",  'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre')) )
+
+
+# mois max jours de pluie
+
+ggplot() +
+  geom_tile(data = krigeage_moismax_df %>% filter(indic %in% 'NORRR1MM'), aes(x=x, y=y, fill=MOIS_t_max), color = NA) +
+  scale_fill_manual(values =  c( "#0A2164","#1369A2", "#0099A9","#009780","#67B784","#CBDF7C",
+                                 "#FFE200", "#E57B25","#F0522D","#912E0F","#33004B"), name = "") +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Mois avec un maximum de jours de pluie",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm +   theme(legend.position = c(0.9, 0.5), legend.key.size=unit(0.3,"cm"), legend.text=element_text(size=5)) +    
+  coord_sf(crs = st_crs(2154))
+
+``` 
+
+
+
+```{r carte_pluie_max_2, fig.width=4.7,fig.height=5,out.extra='style="float:left"',echo=F, message=F, warning=F}
+
+
+# mois max quantité de pluie
+  ggplot() +
+  geom_tile(data = krigeage_moismax_df %>% filter(indic %in% 'NORRR'), aes(x=x, y=y, fill=MOIS_t_max), color = NA) +
+  scale_fill_manual(values =  c( "#0A2164","#1369A2","#009780","#67B784","#CBDF7C",
+                                 "#FFE200", "#E57B25","#F0522D","#912E0F","#33004B"), name = "") +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Mois avec un maximum de quantité de pluie",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm +   theme(legend.position = c(0.9, 0.5), legend.key.size=unit(0.3,"cm"), legend.text=element_text(size=5)) +  
+  coord_sf(crs = st_crs(2154))
+
+``` 
+
+
+Pour comparer les profils sur l'année, voici les stats de pluviométrie d'une centaine de villes selon le mois de l'année : les chiffres mensuels s'affichent en passant sur les points, tout comme la courbe.
+Brest affiche un record du nombre de jours de pluie dans l'année mais au printemps et en été elle est battue par de nombreuses villes du Nord-Est ou des Alpes !
+La couleur du rond symbolise la quantité de pluie tombée :  à la Toussaint il faut mieux prévoir le parapluie à Annecy et à Aurillac.
+En bas du graphique on retrouve les villes où il pleut le moins souvent : Marseille détient le record en été mais Perpignan est en tête en hiver.
+
+```{r graphique_mois_villes,  fig.width=7,fig.height=7,echo=F, message=F, warning=F}
+
+COMM_indics_TOT_m_mois_df <- fread( file = "./data/COMM_indics_TOT_m_mois_df.csv", verbose = F)
+
+
+VILLES_indics_TOT_m_mois_df <-
+COMM_indics_TOT_m_mois_df %>% 
+  right_join(comm_prefs_80khabs %>% dplyr::select(CODGEO,NOM_COM) %>% as.data.frame(), by = c("INSEE_COM" = "CODGEO"))  %>% 
+  #dplyr::select(INSEE_COM,val, MOIS_t) %>%
+  spread(indic, val) %>%
+  mutate(MOIS_t = factor(MOIS_t, levels = c('Janvier',"Février", "Mars","Avril",  "Mai",  "Juin","Juillet",  'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre')) ) %>%
+  mutate(ttip = paste(
+    "<strong>", NOM_COM,"</strong>"," en ",MOIS_t, ": <br />",
+   format(round(as.numeric(NORRR1MM), 0), nsmall=0, big.mark=" "), " jours de pluie<br />",
+   format(round(as.numeric(NORRR), 0), nsmall=0, big.mark=" "), " mm de pluie<br />",
+   "soit ",format(round(as.numeric(NORRR/NORRR1MM), 0), nsmall=0, big.mark=" "), " mm de pluie par jour de pluie<br />"))
+  
+
+ppp <-
+  # graphique villes quantité pluie par mois
+  ggplot() +
+  geom_line_interactive(data = VILLES_indics_TOT_m_mois_df , aes(MOIS_t, NORRR1MM, group = as.factor(NOM_COM),tooltip = NOM_COM, data_id = NOM_COM), alpha = 0.6, color = "grey90", size = 0.5) +
+  
+  geom_point_interactive(data = VILLES_indics_TOT_m_mois_df , aes(x= MOIS_t, y=NORRR1MM,  size = NORRR/NORRR1MM, color = NORRR,tooltip = ttip, data_id = NOM_COM),  alpha = 0.7, shape = 20) +
+  scale_size(range = c(0.05,5), name = "Quantité de pluie\nmoyenne par jour\nde pluie (en mm)") +
+  scale_color_distiller(palette = "RdBu", direction = 1, name = "Quantité de pluie\ntotale par mois\n(en mm)") +
+  scale_y_continuous(limits = c(0, 20)) +
+  #scale_colour_manual(values = c("grey")) +
+  labs(
+    y = "Nombre de jours de pluie", x = "",
+    title = "Quantité et fréquence de pluie par mois",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm +  #guides(colour = "none") +
+  theme(        legend.text=element_text(size=6),
+                legend.title=element_text(size=7),
+              axis.text.x=element_text(size=7, color = "grey",angle=30),
+              axis.title.x=element_text(size=9, color = "black"),
+              axis.text.y=element_text(size=9, color = "grey"),
+              axis.title.y=element_text(size=9, color = "black",angle=90),
+               plot.title=element_text(size=10,face="bold"),
+              plot.subtitle=element_text(size=7,face="italic"),
+              plot.caption=element_text(size=4.5,colour = "grey20")) 
+
+
+
+ggiraph(code = {print(ppp)},
+        #width_svg = 20, 
+        tooltip_extra_css = tooltip_css,
+        tooltip_offx = 0, tooltip_offy = -25,
+        zoom_max = 1,
+        width = 1, height = 4.7,
+        hover_css = "color:red;stroke:red")
+
+
+```
+
+
+
+### L'année en gifs
+
+
+```{r gif_pluie_jours, fig.width=4,fig.height=6,out.extra='style="float:left"',echo=F, message=F, warning=F}
+library(gganimate)
+library(magick)
+
+# carte nb jours pluie
+krigeage_1000m_df_mois <- krigeage_1000m_df_mois %>%
+  mutate(MOIS_t = factor(MOIS_t, levels = c('Janvier',"Février", "Mars","Avril",  "Mai",  "Juin","Juillet",  'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre')) )
+
+  
+p <-
+ggplot() +
+  geom_tile(data = krigeage_1000m_df_mois %>% filter(indic %in% 'NORRR1MM') , aes(x=x, y=y, fill=var1.pred, frame = MOIS_t), color = NA) +
+  scale_fill_viridis(option="viridis", direction = -1, name = "", limits = c(1, 25)) +
+ # geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Nombre de jours de pluie en : ",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm +            
+  theme(legend.position = c(0.9, 0.5)) +
+  coord_sf(crs = st_crs(2154))
+
+
+gganimate(p, filename="gif_pluie_jours.gif", title_frame = TRUE, interval = 0.8)
+
+knitr::include_graphics('./gif_pluie_jours.gif')
+
+
+``` 
+
+
+```{r gif_pluie_quantite, fig.width=4,fig.height=6,out.extra='style="float:left"',echo=F, message=F, warning=F}
+
+p <-
+ggplot() +
+  geom_tile(data = krigeage_1000m_df_mois %>% filter(indic %in% 'NORRR') , aes(x=x, y=y, fill=var1.pred, frame = MOIS_t), color = NA) +
+  scale_fill_viridis(option="magma", direction = -1, name = "", limits = c(0, 350)) +
+ # geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Quantité de pluie en : ",
+    subtitle = "Moyenne sur période de référence : 1976-2005",
+    caption = "Source : Meteo France, modèle Aladin-Climat / data.gouv.fr"
+  ) +   
+  thm +            
+  theme(legend.position = c(0.9, 0.5)) +
+  coord_sf(crs = st_crs(2154))
+
+gganimate(p, filename="gif_pluie_quantite.gif", title_frame = TRUE, interval = 0.8)
+
+knitr::include_graphics('./gif_pluie_quantite.gif')
+
+``` 
+
+
+Pour le plaisir on peut terminer par deux animations de la fréquence et de la quantité de pluie par mois :
