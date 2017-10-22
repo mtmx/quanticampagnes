@@ -133,7 +133,7 @@ La nuance entre fréquence et quantité est importante : on peut essayer de dist
 
 # import data
 krigeage_TOT_m_1000m_df <- fread( file = "./data/krigeage_TOT_m_1000m_df.csv", verbose = F)
-COMM_indics_an_TOT_m <- fread( file = "./data/COMM_indics_an_TOT_m.csv", verbose = F)
+COMM_indics_an_TOT_m <- fread( file = "./data/COMM_indics_an_TOT_m.csv", colClasses=c(INSEE_COM="character",INSEE_DEP="character", CODE_EPCI="character"), verbose = F)
 
 # calcul des quantiles 
 COMM_indics_an_TOT_m <- COMM_indics_an_TOT_m %>%
@@ -211,13 +211,6 @@ Sur le graphique et la carte associée, le niveau de transparence et de nuance d
 
 Première info : les communes du Sud-Est sont localisées à gauche du nuage de point, loin des autres, signe d'un climat franchement différent du reste du pays. Plus le tond est clair plus la quantité de précipitations est faible (Perpignan et Marseille), mais en violet foncé existent des communes où il pleut rarement mais quand il pleut, il pleut !
 A doite du nuage de points on retrouve sans surprise Brest, la ville où on compte le plus de jours de pluie dans l'année, mais Chambéry, Aurillac et Annecy sont de loin celles où il pleut le plus. Les villes où il pleut relativement souvent mais en quantité limitée sont signifées en jaune clair, on y trouve Chartes, Arras ou encore Strasbourg.
-
-
-
-
-
-
-
 
 
 
@@ -473,5 +466,3 @@ knitr::include_graphics('./gif_pluie_quantite.gif')
 
 ``` 
 
-
-Pour le plaisir on peut terminer par deux animations de la fréquence et de la quantité de pluie par mois :

@@ -1,0 +1,13 @@
+name: appli_test
+title: appli_test
+username:
+account: matai
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 227308
+bundleId: 1036780
+url: https://matai.shinyapps.io/appli_test/
+when: 1508514764.42892
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: server_vfiltreleaflet_CVchoro.R|server_vfiltreleaflet_dep.R|server_vfiltreleafletstable.R|server.R|ui.R|uiserver_factorinputslider.R|uiserver_ggplot_1.R|uiserver_ggplot_1b.R|uiserver_ggplot_2_factor_pointsCAN_ggiraph.R|uiserver_ggplot_2_factor_pointsCAN.R|uiserver_ggplot_2_factor_polygonCAN.R|uiserver_ggplot_2_factor.R|uiserver_ggplot_2.R|data|www

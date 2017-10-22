@@ -1,0 +1,216 @@
+---
+title: "La platitude"
+author: "Mathieu"
+date: "8/10/2017"
+output: html_document
+---
+
+```{r setup, echo=F, message=F, warning=F, include = F, results = 'hide'}
+options(width = 999)
+knitr::opts_chunk$set(echo = TRUE)
+
+
+#chargement librairies
+#options(java.parameters = "-Xmx1024m")
+#library(XLConnectJars)
+#library(XLConnect)
+# https://cran.r-project.org/web/packages/xlsx/xlsx.pdf
+
+library(tidyverse)
+library(magrittr)
+library(data.table)
+library(sf)
+library(ggplot2)
+
+
+#import data
+COMM_alti.df <- fread(file = "./data/COMM_alti.df.csv", verbose = F, colClasses = c("character","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","character","character","numeric","numeric"))  %>% as.data.frame()
+
+comm.s <- st_read( "./data/quanticampagnes/comm.s.shp", stringsAsFactors = F, quiet = T) %>% st_transform(crs = 2154)
+DEP.s <- st_read( "./data/quanticampagnes/DEP.s.shp", stringsAsFactors = F, quiet = T) %>% st_transform(crs = 2154)
+
+
+
+```
+
+
+Si les touristes viennent nombreux visiter la France pour ses paysages variés, le relief n’est pas étranger à cette richesse de contrastes. Plus que l’altitude c’est la déclivité qui affecte largement notre perception des paysages. En tout cas, la mienne. Rien ne me désespère plus que les paysages plats à perte de vue (toutes des « mornes plaines », Waterloo comprise) alors que je ne me lasse jamais des panoramas vallonnés voire escarpés.
+
+La [BD ALTI](https://www.data.gouv.fr/fr/datasets/bd-alti-r-75-m-250-m-1-000-m/) de l’IGN renseigne l’altitude sur chaque point du territoire avec une résolution de 75 mètres. On peut mesurer la déclivité à l’aide de l’écart-type calculé sur les points d’altitude de chaque commune, et connaitre ainsi la dispersion statistique de ces points : plus l’écart-type est élevé, plus l’altitude est variée et le paysage vallonné. L’écart-type a l’avantage de ne pas être sensible à la valeur de la moyenne : une commune au même profil topographique, qu’elle soit située à 50 mètres ou 1000 mètres d’altitude, aura le même écart-type. Pour exemple voici le profil topographique de trois communes ayant toutes une altitude moyenne de 100 mètres mais des écarts-types très différents (comme d’habitude, toute la méthode et le traitement de données est disponible sur la page du projet [quanticampagnes](https://github.com/mtmx/quanticampagnes)) :
+
+
+```{r exemples_alti,echo=F, message=F, warning=F, fig.width=7,fig.height=5}
+COMM_exemple_alti <- fread(file = "./data/COMM_exemple_alti.csv", verbose = F, colClasses = c("numeric","character")) 
+COMM_exemple_alti_indics <- COMM_alti.df %>% filter( CODGEO %in% c('45123', '2B050','76069') )
+COMM_exemple_alti <- COMM_exemple_alti %>% left_join(COMM_exemple_alti_indics, by = "CODGEO")
+
+ggplot(COMM_exemple_alti, aes(x = paste0(NOM_COMM," (",substr(CODGEO,1,2),")") , y = alti)) +
+  geom_dotplot(binaxis = "y", stackdir = "center",binwidth = 1, method = "histodot", colour="grey40" ) +
+  labs(x = "", y = "ALTITUDE (en mètres)",
+       title = "Exemples de trois communes ayant la même altitude moyenne",
+       subtitle = "Nombre de points de mesure sur le territoire de la commune",
+       caption = "Source : IGN BD ALTI / GEOFLA") +
+  annotate("text", x = 1.75, y = 400, colour = "black",size=3, fontface="italic", label = "Moyenne : 100 m") +
+  annotate("text", x = 1.75, y = 380, colour = "black",size=3, fontface="italic", label = "Ecart-type : 107 m") + 
+  annotate("text", x = 1.75, y = 360, colour = "black",size=3, fontface="italic", label = "Minimum : 0 m") +
+  annotate("text", x = 1.75, y = 340, colour = "black",size=3, fontface="italic", label = "Maximum : 620 m") +
+  
+  annotate("text", x = 1, y = 300, colour = "black",size=3, fontface="italic", label = "Moyenne : 100 m") +
+  annotate("text", x = 1, y = 280, colour = "black",size=3, fontface="italic", label = "Ecart-type : 52 m") + 
+  annotate("text", x = 1, y = 260, colour = "black",size=3, fontface="italic", label = "Minimum : 3 m") +
+  annotate("text", x = 1, y = 240, colour = "black",size=3, fontface="italic", label = "Maximum : 161 m") +
+  
+  annotate("text", x = 3, y = 200, colour = "black",size=3, fontface="italic", label = "Moyenne : 100 m") +
+  annotate("text", x = 3, y = 180, colour = "black",size=3, fontface="italic", label = "Ecart-type : 1 m") + 
+  annotate("text", x = 3, y = 160, colour = "black",size=3, fontface="italic", label = "Minimum : 99 m") +
+  annotate("text", x = 3, y = 140, colour = "black",size=3, fontface="italic", label = "Maximum : 103 m") 
+```
+
+On a l’habitude de regarder uniquement l’altitude moyenne alors que derrière ce chiffre se cache des profils très différents. Pour repérer ces paysages plats ou vallonnés, l’idée est donc de procéder à la comparaison entre l’altitude moyenne par commune et l’écart-type de ses points d’altitude avec le menu déroulant placé en haut à gauche de la carte :
+
+```{r carte_commune_comparo,echo=F, message=F, warning=F, fig.width=9,fig.height=6}
+library(stringr)
+library(bsselectR)
+
+img_decli <- paste0(list.files("img/img_decli", full.names = TRUE))
+names(img_decli) <- str_replace_all(img_decli, 
+                                      c("\\.png" = "", 
+                                        "img/img_decli/" = ""))
+
+bsselect(img_decli, type = "img",
+         live_search = TRUE, show_tick = TRUE,frame_height = "30", frame_width = "100%", height = 10)
+```
+
+```{r carte_commune_comparo2,echo=F, message=F, warning=F, fig.width=9,fig.height=6}
+
+COMM_alti.df <- COMM_alti.df %>%
+  mutate(moyenne_cl = cut(moyenne, breaks = quantile(moyenne, probs=seq(0,1, length  = 20), na.rm=TRUE))) %>%
+  mutate(ecarttype_cl = cut(ecart_type, breaks = quantile(ecart_type, probs=seq(0,1, length  = 20), na.rm=TRUE))) %>%
+  filter(!is.na(ecarttype_cl)|!is.na(moyenne_cl))
+
+library(RColorBrewer)
+library(vdiffr)
+library(ggplot2)
+
+c1 <-
+  ggplot() +
+  geom_sf(data = merge(comm.s, COMM_alti.df, by = "CODGEO", all.x = TRUE),
+          aes( fill=moyenne_cl), color = NA) +
+  #scale_fill_brewer(palette = "BrBG", direction = -1, name = "") +
+  scale_fill_manual( name = "", values = colorRampPalette(rev(brewer.pal(10, "BrBG")) )(20)) +
+  #scale_fill_gradient(low = "green", middle ="white" ,high = "green") +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Altitude : MOYENNE",
+    subtitle = " par commune (en mètres)",
+    caption = "IGN : BD ALTI / GEOFLA"
+  ) +   
+  thm +            
+  theme(legend.position = c(0.9, 0.5)) +
+  coord_sf(crs = st_crs(2154))
+
+c2 <-
+  ggplot() +
+  geom_sf(data = merge(comm.s, COMM_alti.df, by = "CODGEO", all.x = TRUE),
+          aes( fill=ecarttype_cl), color = NA) +
+  #scale_fill_brewer(palette = "BrBG", direction = -1, name = "") +
+  scale_fill_manual( name = "", values = colorRampPalette(rev(brewer.pal(10, "BrBG")) )(20)) +
+  #scale_fill_gradient(low = "green", middle ="white" ,high = "green") +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+  labs(
+    title = "Altitude : ECART-TYPE",
+    subtitle = " par commune (en mètres)",
+    caption = "IGN : BD ALTI / GEOFLA"
+  ) +   
+  thm +            
+  theme(legend.position = c(0.9, 0.5)) +
+  coord_sf(crs = st_crs(2154))
+
+p1 <- function() plot(c1)
+p2 <- function() plot(c2)
+
+widget_slide(p1, p2, width = "600px", height = "600px")
+```
+
+La discrétisation se fait par quantiles : les 5% de communes les plus basses (en vert foncé) ont une altitude moyenne inférieure à 32 mètres. Parallèlement, les 5% de communes les plus plates (en vert foncé également sur la seconde carte) ont un écart-type inférieur à 4 mètres. Est-ce que ce sont les mêmes ? Loin de là !
+
+De nombreuses communes du littoral méditerranéen (exceptées en Camargue et dans le Roussillon), de la vallée de la Seine ou du Pas-de-Calais sont très basses mais en même temps très vallonnées contrairement à l’Alsace, la Beauce ou la Bresse où l’on trouve les zones les plus plates du pays, pourtant loin d’être les plus basses. Comparer altitude moyenne et déclivité sur le graphique qui suit fait également apparaitre des régions atypiques (survolez les points pour afficher le nom de la commune) :
+
+```{r scatterplot_tot_1,echo=F, message=F, warning=F, fig.width=6,fig.height=6}
+library(scatterD3)
+COMM_alti.df <- COMM_alti.df %>%
+  mutate(type_commune = ifelse(STATUT %in% c("Capitale d'état", "Préfecture de région","Préfecture")|POPULATION > 50000  , "Grandes villes","Autres communes"))
+
+
+scatterD3(data = COMM_alti.df, x = ecart_type, y = moyenne, 
+          tooltip_text = paste(
+            "<strong>", COMM_alti.df$NOM_COMM,"</strong>", " (", substr(COMM_alti.df$CODGEO,1,2),") <br />",
+           " Moyenne : ", format(round(as.numeric(COMM_alti.df$moyenne), 0), nsmall=0, big.mark=" "), " mètres<br />",
+           " Ecart-type : ",format(round(as.numeric(COMM_alti.df$ecart_type), 0), nsmall=0, big.mark=" "), " mètres<br />"),
+          
+          #fixed = TRUE,
+         col_var = type_commune,
+         colors = c("Grandes villes" = "#4472A7", "Autres communes" = "#a1b8d3"),
+         col_lab = "Type de communes",
+          point_opacity =0.5,
+          axes_font_size = "120%",
+          legend_font_size = "14px",
+          caption = "Zoomer et passer sur les points pour afficher les caractéristiques de chaque commune. 
+         Cliquer sur la catégorie 'Grandes villes' pour n'afficher que celles-ci",
+          xlim = c(0,900),ylim = c(0,3000),
+          size_var = superficie_ha,
+         size_lab = "Superficie",
+          hover_size = 4,
+         width = 800, height = 500,
+          xlab = "Ecart-type d'altitude (en mètres)", ylab = "Moyenne d'altitude (en mètres)" )
+```
+
+ 
+ 
+Des communes du Massif Central (Lozère, Puy-de-Dôme) ou encore des Pyrénées catalanes sont très hautes mais relativement peu escarpées par rapport à leurs homologues alpines ; les communes du littoral corse sont au contraire très accidentées alors qu’elles affichent une altitude moyenne plutôt faible.
+Sans surprise c’est Chamonix et son Mont-Blanc qui remporte la palme de la commune la plus accidentée mais Bonneval-sur-Arc en Savoie reste la commune la plus élevée en moyenne. Les Moëres située près de Dunkerque et limitrophe de la Belgique est à la fois la commune la plus plate et la plus basse du pays. Ensuite les communes les plus plates sont situées en bordure du Rhône (Le Bouchage – Isère), sur une île de la Loire (Behuard – Maine-et-Loire) et près de la mal-nommée Saint-Jean-de-Monts (Le Perrier – Vendée) alors que les communes les plus basses sont camarguaises (Palavas-les-flots, Saintes-Maries-de-la-Mer et Aigues-Mortes).
+La nature a bien sûr son mot à dire sur le développement des organisations humaines : aménager les transports, l’industrie, la vie, c’est plus facile quand le territoire est plat.
+
+Les villes (par commodité on se limite ici aux communes de plus de 50 000 habitants et aux préfectures) sont donc généralement plus plates que les petites communes :
+
+
+```{r scatterplot_tot_2,echo=F, message=F, warning=F, fig.width=4,fig.height=4}
+COMM_alti.df.villes <- COMM_alti.df %>% filter(type_commune %in% 'Grandes villes')
+
+scatterD3(data = COMM_alti.df.villes, x = ecart_type, y = moyenne, 
+          tooltip_text = paste(
+            "<strong>", COMM_alti.df.villes$NOM_COMM,"</strong>", " (", substr(COMM_alti.df.villes$CODGEO,1,2),") <br />", 
+           " Moyenne : ", format(round(as.numeric(COMM_alti.df.villes$moyenne), 0), nsmall=0, big.mark=" "), " mètres<br />",
+           " Ecart-type : ",format(round(as.numeric(COMM_alti.df.villes$ecart_type), 0), nsmall=0, big.mark=" "), " mètres<br />"),
+          
+          #fixed = TRUE,
+         col_var = type_commune,
+         colors = c("Grandes villes" = "#4472A7", "Autres communes" = "#a1b8d3"),
+         col_lab = "Type de communes",
+          point_opacity =0.5,
+          axes_font_size = "120%",
+          legend_font_size = "14px",
+          caption = "Zoomer et passer sur les points pour afficher les caractéristiques de chaque commune. 
+         Cliquer sur la catégorie 'Grandes villes' pour n'afficher que celles-ci",
+          xlim = c(0,500),ylim = c(0,1400),
+          size_var = POPULATION,
+         size_lab = "Population",
+          hover_size = 4,
+         width = 600, height = 300,
+          xlab = "Ecart-type d'altitude (en mètres)", ylab = "Moyenne d'altitude (en mètres)" )
+```
+
+
+Même si certaines villes sont assez hautes, elles restent peu escarpées (Lyon, Dijon, Clermont-Ferrand…) ; seules quelques grandes villes méditerranéennes (Marseille, Toulon, Ajaccio) et surtout Grasse présentent cette particularité. Saint-Etienne et Annecy sont tout de même les villes les plus hautes de France.
+
+
+```{r carte_pluie_max_1, out.width="30%",out.extra='style="float:left"',echo=F, message=F, warning=F}
+
+library(knitr)
+knitr::include_graphics("./img/grenoble.png")
+
+``` 
+
+D’après mes calculs Calais est à la fois la ville la plus basse (devant Arles) et la plus plate de France (devant Dunkerque). Pourtant sur sa fiche wikipedia c’est Grenoble qui est proclamée ville la plus plate de France, une information qu’on retrouve également ailleurs mais sans indication de la source.
+
+La ville de Grenoble est située sur un ancien lac glaciaire mais en la regardant de plus près, une petite partie au Nord de son territoire se trouve sur la rive droite très pentue de l’Isère où est perché le fort de la Bastille. En excluant cette surface, l’écart-type de son altitude passe de 35 mètres à moins de 5 mètres, toujours insuffisant pour détrôner Calais de son sommet de platitude. La préfecture de l’Isère est donc probablement très plane, au sens de dépourvue d’aspérités, mais présente un dévers important entre 203 et 227 mètres. Chacun voit le plat à sa porte (mais l’objectiver n’est pas une mince affaire).

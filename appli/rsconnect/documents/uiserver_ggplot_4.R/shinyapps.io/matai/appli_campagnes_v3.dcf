@@ -1,0 +1,12 @@
+name: appli_campagnes_v3
+title: appli_campagnes_v3
+username:
+account: matai
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 227396
+bundleId: 1037156
+url: https://matai.shinyapps.io/appli_campagnes_v3/
+when: 1508531163.73267
+asMultiple: FALSE
+asStatic: FALSE

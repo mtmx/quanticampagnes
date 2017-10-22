@@ -1,0 +1,220 @@
+---
+title: "Cartes à points pour bêtes à poils"
+author: "Mathieu"
+date: "21/08/2017"
+output: html_document
+---
+
+```{r setup, echo=F, message=F, warning=F}
+options(width = 999)
+knitr::opts_chunk$set(echo = TRUE)
+
+#chargement librairies
+#options(java.parameters = "-Xmx1024m")
+#library(XLConnectJars)
+#library(XLConnect)
+# https://cran.r-project.org/web/packages/xlsx/xlsx.pdf
+
+library(tidyverse)
+library(magrittr)
+library(COGugaison)
+library(data.table)
+library(sf)
+library(janitor)
+library(stringi)
+library(ggplot2)
+library(forcats)
+library(png)
+library(grid)
+library(RCurl)
+library(cartography)
+library(ggimage)
+library(ggiraph)
+
+CV_pts <- st_read( "./data/CV_pts.shp", stringsAsFactors = F, quiet = T) %>% st_transform(crs = 2154)
+DEP.s <- st_read( "./data/DEP.s.shp", stringsAsFactors = F,quiet = T) %>% st_transform(crs = 2154)
+grd_data_ctr_img <- fread("./data/grd_data_ctr_img.csv", verbose = F) %>%
+    mutate(tip = gsub('""','"', tip))
+
+
+# ordre facteur et renommage
+CV_pts_2 <- CV_pts %>%
+  mutate(type_pop = factor(type_pop,levels = c( 'total_bovins','total_equides','total_porcins', 'total_caprins','total_ovins','lapines_meres','volailles','P10_POP'))) %>%
+  mutate( type_pop_lab = fct_recode(type_pop,
+                                    "Bovins (veaux, vaches, génisses, boeufs...) [ . = 1000 têtes]" = 'total_bovins',
+                                    "Equidés (chevaux, anes, mulets...) [ . = 200 têtes]" = 'total_equides',
+                                    "Porcins (cochons, truies, porcelets) [ . = 2 000 têtes]" ='total_porcins',
+                                    "Caprins (chèvres, boucs, chevreaux) [ . = 1 000 têtes]" = 'total_caprins',
+                                    "Ovins (moutons, brebis, agneaux) [ . = 1 000 têtes]" = 'total_ovins',
+                                    "Lapines-mères [ . = 1 000 têtes]" = 'lapines_meres',
+                                    "Volailles [ . = 50 000 têtes]" = 'volailles' ,
+                                    'Population humaine [ . = 10 000 têtes]' = 'P10_POP'))
+
+# parametrage du thème ggplot
+thm <- 
+  theme(legend.position="right",
+        legend.text=element_text(size=8),
+        legend.title=element_text(size=9),
+        axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.y=element_blank(),#element_text(size=9, color = "black"),
+        axis.title.y=element_blank(), #element_text(size=9, color = "grey",face="italic"),
+        axis.ticks=element_blank(),
+        panel.background=element_blank(),panel.border=element_blank(),
+        panel.grid.major.y=element_line(colour = 'grey80', linetype = 'dotdash', size = 0.1),
+        panel.grid.major.x=element_line(colour = 'grey80', linetype = 'dotdash', size = 0.1),#element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank(),
+        legend.key = element_rect(fill = NA, colour = NA),
+        legend.key.width = unit(0.4, "cm"),
+        strip.text.y = element_text(size = 8, colour = "black", angle = 0),
+        strip.text.x = element_text(size = 8, colour = "black", angle = 0),
+        plot.title=element_text(size=12,face="bold"),
+        plot.subtitle=element_text(size=9,face="italic"),
+        plot.caption=element_text(size=6,colour = "grey20")) 
+
+```
+
+Si les campagnes françaises sont (pour moi au moins) aussi sexy, c'est d'abord grâce à leur grande diversité : humides ou torrides, plates ou montagneuses, sauvages ou domptées par l'homme. L'idée ici est donc de quantifier cette variété de paysages grâce à des indicateurs objectifs. On commence par le peuplement de ces campagnes par les différents types de cheptels qu'on peut y trouver : vaches, chevaux, moutons, chêvres... Toutes les données sont dispos sur le [site du ministère de l'agriculture](https://stats.agriculture.gouv.fr/cartostat/#l=fr;i=stru1.saumoy10;v=map2).
+
+
+Les cartes à points sont plutôt rares mais peuvent s'avérer très efficaces pour représenter la dispersion d'une quantité d'individus dans l'espace (pourquoi pas des [patates](https://www.reddit.com/r/MapPorn/comments/6evpgm/map_showing_density_of_potato_cultivation_in/?st=J3PWXSZJ&sh=528781c3)) mais aussi la répartition de différentes populations comme cette [carte des citoyens américains selon leur appartenance ethnique](https://demographics.virginia.edu/DotMap/index.html) montrant en creux le niveau de ségrégation ou de cohabitation interethnique.
+Ici on triche un peu, un point symbolisant des quantités différentes selon le type de population (1 point rouge = 10 000 humains, 1 point noir = 1 000 bovins, etc...).
+Les scripts pour réaliser ces cartes sont dispos sur la page github du projet [quanticampagnes](https://github.com/mtmx/quanticampagnes) qui sera plus tard enrichi d'autres sources. Le nouveau format de manipulation de données spatiales [sf](https://github.com/r-spatial/sf) a été utilisé, ainsi que les désormais indispensables packages tidyverse, ggplot, ggiraph ou encore cartography.
+
+ 
+Voilà donc le peuplement de la France si on agrège l'ensemble de ces cheptels :
+
+
+```{r cheptels_points_total,echo=F, message=F, warning=F, fig.width=20,,fig.height=12}
+
+ggplot() +
+  geom_sf(data = CV_pts_2 , aes( color =type_pop_lab), shape =".", size = 2) + 
+  scale_color_manual(name = "",
+                    values = c( "#00000066", "#d2691e66","#dda0dd66","#66cdaa66","#4169e166","#ffb6c166","#f0e68c66","#ff000066")) +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey85", fill = NA ,size = 0.1) +
+  thm +
+  theme(legend.position = c(0.95, 0.5),
+        legend.key.size = unit(0.5,"cm")) +
+  # annotations
+ # annotate("text", label="1 point = 100 ", x=1190000, y=6750000, size=2,  fontface="italic") +
+  #annotation_custom(img_humain, xmin=1181802 + 200000, xmax=17.99367 + 250000, ymin=6777667 - 100000, ymax=6777667 + 100000 +0.5) +
+  # annotation_raster(img_humain, 
+  #                   xmin = 1190000 + 40000 ,
+  #                   xmax = 1190000 + 80000 , 
+  #                   ymin = 6750000 - 20000 , 
+  #                   ymax = 6750000 + 20000 , interpolate = T) +
+  labs(
+    title = "Localisation des différents types de cheptels",
+    subtitle = "(1 point représente le nombre de têtes de bétail indiqué à droite)",
+    caption = "Source : Ministère de l'agriculture / Recensement agricole 2010"
+  ) 
+
+
+```
+
+La périphérie du bassin Parisien entourant la capitale, tout comme l'Aquitaine et le bassin méditerranéen, paraissent tristement dépeuplés. Seuls les humains y ont colonisé l'espace. 
+Au contraire les campagnes du grand Ouest et du massif Central sont un exemple de cohabitation inter-espèces.
+Peace.
+
+On rentre ensuite dans le détail avec ces vignettes montrant chaque population isolément.
+
+```{r cheptels_points_detail,echo=F, message=F, warning=F, fig.width=12,fig.height=26}
+
+
+ggplot() +
+  geom_sf(data = CV_pts_2 , aes( color =type_pop_lab), shape =".", size = 1) + 
+  # geom_sf(data =  st_cast(CV_pts , "MULTIPOINT") , aes( color =type_pop), shape =".") + 
+  
+  #geom_sf(data =  st_cast(CV_pts_poly_2 , "MULTIPOLYGON") , aes( color =type_pop)) + 
+  #coord_sf(crs = st_crs(2154)) +
+  scale_color_manual(name = "",
+                    values = c( "#00000066", "#d2691e","#dda0dd66","#66cdaa","#4169e166","#ffb6c1","#f0e68c66","#ff000066")) +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey75", fill = NA ,size = 0.1) +
+  thm +
+  theme(legend.position="none") +
+  labs(
+   title = "Localisation des différents types de cheptels",
+    subtitle = "(1 point représente le nombre de têtes de bétail indiqué en légende)",
+    caption = "Source : Ministère de l'agriculture / Recensement agricole 2010"
+  ) + facet_wrap(~ type_pop_lab, ncol=2) 
+
+
+
+```
+
+On peut trouver des bovins dans de nombreuses régions du pays, ça c'est plutôt cool parce que des vaches qui broutent dans un champ reste le parangon de la ruralité. Les 
+http://www.la-viande.fr/environnement-ethique/atlas-elevage-herbivore/elevages-francais-ancres-dans-territoires/affirmation-grandes-regions-elevage
+
+A part quelques vaches et quelques brebis dans les Bouches-du-Rhône, le littoral méditerranéen reste désespérement inhospitalier pour nos amis les bêtes.
+
+La frontière entre la campagne et la ville pourrait se formaliser avec un simple indicateur : on y trouve plus de vaches que d'habitants. Reprenant l'idée de cette excellente [carte](http://ssz.fr/vaches/) , voici donc une carte où est représentée le type d'animaux le plus présent. Si le cochon est champion en Bretagne, les brebis sont reines dans les Pyrénées et le sud du massif central. Les vaches sont les plus nombreuses en Normandie et en Bourgogne. En plus du cheptel le plus nombreux, il est indiqué quel type de cheptel est plus nombreux que les humains (un indice en cas de rébellion animale). Il est également possible de zoomer grâce à la fonction loupe (deuxième icone) en haut à droite de la carte.
+
+```{r cheptels_image,echo=F, message=F, warning=F, fig.width=12,fig.height=12}
+
+
+# fonction pour gérer accents
+conv_accents <- function(x) {
+  x <- gsub(pattern = "è", replacement = "&egrave;", x = x)
+  x <- gsub(pattern = "é", replacement = "&eacute;", x = x)
+  x <- gsub(pattern = "ê", replacement = "&ecirc;", x = x)
+  x <- gsub(pattern = "ë", replacement = "&euml;", x = x)
+  x <- gsub(pattern = "î", replacement = "&icirc;", x = x)
+  x <- gsub(pattern = "ï", replacement = "&iuml;", x = x)
+  x <- gsub(pattern = "û", replacement = "&ucirc;", x = x)
+  x <- gsub(pattern = "ü", replacement = "&uuml;", x = x)
+  x <- gsub(pattern = "ô", replacement = "&ocirc;", x = x)
+  x <- gsub(pattern = "à", replacement = "&agrave;", x = x)
+  x <- gsub(pattern = "â", replacement = "&acirc;", x = x)
+  x <- gsub(pattern = "ç", replacement = "&ccedil;", x = x)
+  
+  x <- gsub(pattern = "è", replacement = "&Egrave;", x = x)
+  x <- gsub(pattern = "é", replacement = "&Eacute;", x = x)
+  x <- gsub(pattern = "ê", replacement = "&Ecirc;", x = x)
+  x <- gsub(pattern = "ë", replacement = "&Euml;", x = x)
+  x <- gsub(pattern = "î", replacement = "&Icirc;", x = x)
+  x <- gsub(pattern = "ï", replacement = "&Iuml;", x = x)
+  x <- gsub(pattern = "û", replacement = "&Ucirc;", x = x)
+  x <- gsub(pattern = "ü", replacement = "&Uuml;", x = x)
+  x <- gsub(pattern = "ô", replacement = "&Ocirc;", x = x)
+  x <- gsub(pattern = "à", replacement = "&Agrave;", x = x)
+  x <- gsub(pattern = "â", replacement = "&Acirc;", x = x)
+  x <- gsub(pattern = "ç", replacement = "&Ccedil;", x = x)
+  x <- gsub(pattern = "'", replacement = "&apos;", x = x)
+  
+  return(x)
+}
+
+# style du popup
+tooltip_css <- "background-color:white;padding:2px;font-size: 80%;color: white;opacity:0.2"
+
+my_gg <-
+  ggplot() +
+  geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
+
+  geom_image(data = grd_data_ctr_img ,aes(x= lon, y = lat,image=img), size=.02) + 
+  geom_point_interactive(data = grd_data_ctr_img,
+                         aes(x= lon, y = lat,
+                             tooltip = tip,
+                             data_id = id),shape = 15,colour = "white", alpha =0.1, size =5) + 
+  #coord_sf(crs = st_crs(2154)) +
+  #geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey85", fill = NA ,size = 0.1) +
+  thm +
+  # annotations
+  labs(
+    title = "Type de cheptel le plus nombreux",
+    subtitle = "(humains, porcins, bovins, caprins ou ovins)",
+    caption = "Source : Ministère de l'agriculture / Recensement agricole 2010"
+  )
+
+ggiraph(code = {print(my_gg)},
+        #width_svg = 20, 
+        tooltip_extra_css = tooltip_css,
+        tooltip_offx = -40, tooltip_offy = -30,
+        zoom_max = 3.5,
+        hover_css = "{fill:orange;r:6px;}")
+
+
+```
+

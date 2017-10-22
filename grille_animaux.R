@@ -70,11 +70,11 @@ library("ggplot2")
 library(ggimage)
 
 grd_data_ctr_img <- grd_data_ctr %>%
-  mutate(img = ifelse(type_pop_max %in% 'bovins', "http://www.pngall.com/wp-content/uploads/2016/03/Cow-PNG-11.png",
-                      ifelse(type_pop_max %in% 'porcins', "http://www.pngall.com/wp-content/uploads/2016/03/Pig-Transparent.png", #"./logos/cochon.png", 
-                             ifelse(type_pop_max %in% 'caprins', "http://www.pngall.com/wp-content/uploads/2016/06/Goat-Free-PNG-Image.png",
-                                    ifelse(type_pop_max %in% 'ovins', "http://www.pngall.com/wp-content/uploads/2016/03/Sheep.png",
-                                           ifelse(type_pop_max %in% 'equides', "http://pngimg.com/uploads/horse/horse_PNG2558.png","http://www.alloprof.qc.ca/BV/PublishingImages/pages/a0306/a306i29.png")))))) %>%
+  mutate(img = ifelse(type_pop_max %in% 'bovins', "http://pngimg.com/uploads/cow/cow_PNG2132.png",
+                      ifelse(type_pop_max %in% 'porcins', "http://pngimg.com/uploads/pig/pig_PNG2214.png", #"./logos/cochon.png", 
+                             ifelse(type_pop_max %in% 'caprins', "http://pngimg.com/uploads/goat/goat_PNG13152.png",
+                                    ifelse(type_pop_max %in% 'ovins', "http://pngimg.com/uploads/sheep/sheep_PNG2723.png",
+                                           ifelse(type_pop_max %in% 'equides', "http://pngimg.com/uploads/horse/horse_PNG2558.png","http://clipart-library.com/images/rcjKGxMMi.png")))))) %>%
   mutate(tip = paste0(
                       #"<style> div.leaflet-popup-content {width:auto!important;}</style>",
                       "<img src = ",paste0('"' ,img,'"'), " height=\"50\"width=\"60\">",
@@ -152,7 +152,7 @@ my_gg <-
 
   geom_sf(data = st_cast(DEP.s, "MULTIPOLYGON"), color = "grey65", fill = NA ,size = 0.2) +
 
-  geom_image(data = grd_data_ctr_img ,aes(x= lon, y = lat,image=img), size=.02) + 
+  geom_image(data = grd_data_ctr_img ,aes(x= lon, y = lat,image=img), size=.013) + 
   geom_point_interactive(data = grd_data_ctr_img,
                          aes(x= lon, y = lat,
                              tooltip = tip,
@@ -170,9 +170,11 @@ my_gg <-
 
 # ggiraph
 ggiraph(code = {print(my_gg)},
-       # height_svg = 5, 
-      #  width_svg = 15,
-      width = 1,
+        #selection_type = "multiple", 
+       # height_svg = 50, 
+      #  width_svg = 50,
+      #width = 0.7,
+      #height = 5,
         tooltip_extra_css = tooltip_css,
         tooltip_offx = -40, tooltip_offy = -30,
         zoom_max = 4,
